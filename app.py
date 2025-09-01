@@ -36,7 +36,8 @@ def gen_key(chat_history: ChatHistory):
 async def chat_count():
     return f"""
     Chat count (last 24 hours): {len(chat_cache)}
-    Total chat count: {supabase.rpc("chat_count").execute()}
+    <br>
+    Total chat count: {supabase.rpc("chat_count").execute().data}
     """.strip()
 
 @app.post("/log")
