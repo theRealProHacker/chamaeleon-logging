@@ -6,6 +6,7 @@
 # The key is then used to update the database with the new messages
 
 import os
+import time
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -22,7 +23,7 @@ app = Flask(__name__)
 type Message = dict
 type ChatHistory = list[Message]
 
-chat_cache: dict[str, tuple[str, ChatHistory]] = {}
+chat_cache: dict[str, tuple[str, ChatHistory], int] = {}
 
 def is_real_msg(msg: Message):
     return "role" in msg and "content" in msg
@@ -30,6 +31,13 @@ def is_real_msg(msg: Message):
 def gen_key(chat_history: ChatHistory):
     # filter for messages
     return ";".join((msg["role"]+": "+msg["content"]) for msg in chat_history if is_real_msg(msg))
+
+@app.get("/")
+async def chat_count():
+    return f"""
+    Chat count (last 24 hours): {len(chat_cache)}
+    Total chat count: {supabase.rpc("chat_count").execute()}
+    """.strip()
 
 @app.post("/log")
 async def log_chat():
@@ -46,7 +54,7 @@ async def log_chat():
         # Check if chat is in cache
         if key in chat_cache:
             # Existing chat, find in cache and update database
-            (db_index, old_history) = chat_cache[key]
+            (db_index, old_history, _) = chat_cache[key]
 
             # add new messages to history
             # find the last "real" message in the old chat (mess). 
@@ -54,7 +62,7 @@ async def log_chat():
             last_real_msg = next((msg for msg in reversed(old_history) if is_real_msg(msg)), None)
             assert last_real_msg is not None, "No real message found in old chat"
 
-            new_history = old_history+chat_history[chat_history.index(last_real_msg)+1:]
+            new_history = old_history + chat_history[chat_history.index(last_real_msg)+1:]
 
             chat_cache[gen_key(new_history)] = (key, new_history)
             supabase.table("chats").update({"messages": new_history}).eq("id", db_index).execute()
@@ -64,6 +72,12 @@ async def log_chat():
     key = gen_key(chat_history)
     response = supabase.table("chats").insert({"messages": chat_history}).execute()
     chat_id = response.data[0]['id']
-    chat_cache[key] = (chat_id, chat_history)
+    chat_cache[key] = (chat_id, chat_history, time.time())
+
+    # Clear old chat histories from cache
+    for k, (db_index, old_history, timestamp) in list(chat_cache.items()):
+        if time.time() - timestamp > 24 * 60 * 60:
+            del chat_cache[k]
+
     return {"status": "new chat logged", "chat_id": chat_id}
     
