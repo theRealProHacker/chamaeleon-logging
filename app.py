@@ -9,7 +9,7 @@ import os
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from flask import Flask
+from flask import Flask, request
 
 load_dotenv()
 
@@ -32,7 +32,8 @@ def gen_key(chat_history: ChatHistory):
     return ";".join((msg["role"]+": "+msg["content"]) for msg in chat_history if is_real_msg(msg))
 
 @app.post("/log")
-async def log_chat(chat_history: ChatHistory):
+async def log_chat():
+    chat_history: ChatHistory = request.get_json()
     if len(chat_history) > 1:
         key_chat_history = chat_history[:]
         while True:
