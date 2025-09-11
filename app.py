@@ -65,7 +65,7 @@ async def log_chat():
 
             new_history = old_history + chat_history[chat_history.index(last_real_msg)+1:]
 
-            chat_cache[gen_key(new_history)] = (key, new_history)
+            chat_cache[gen_key(new_history)] = (key, new_history, time.time())
             supabase.table("chats").update({"messages": new_history}).eq("id", db_index).execute()
             return {"status": "chat updated", "chat_id": key}
     
@@ -77,7 +77,7 @@ async def log_chat():
 
     # Clear old chat histories from cache
     for k, (db_index, old_history, timestamp) in list(chat_cache.items()):
-        if time.time() - timestamp > 24 * 60 * 60:
+        if time.time() - timestamp > 48 * 60 * 60:
             del chat_cache[k]
 
     return {"status": "new chat logged", "chat_id": chat_id}
