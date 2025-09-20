@@ -6,6 +6,7 @@
 # The key is then used to update the database with the new messages
 
 import os
+import re
 import time
 
 from dotenv import load_dotenv
@@ -28,10 +29,6 @@ chat_cache: dict[str, tuple[str, ChatHistory], int] = {}
 def is_real_msg(msg: Message):
     return "role" in msg and "content" in msg
 
-def gen_key(chat_history: ChatHistory):
-    # filter for messages
-    return ";".join((msg["role"]+": "+msg["content"]) for msg in chat_history if is_real_msg(msg))
-
 @app.get("/")
 async def chat_count():
     return f"""
@@ -40,16 +37,34 @@ async def chat_count():
     Total chat count: {supabase.rpc("chat_count").execute().data}
     """.strip()
 
+def gen_key(chat_history: ChatHistory):
+    # filter for messages
+    return ";".join((msg["role"]+": "+msg["content"]) for msg in chat_history if is_real_msg(msg))
+
+html_tag_pattern = re.compile(r'<.*?>')
+def clean_html_tags(text: str) -> str:
+    return html_tag_pattern.sub("", text)
+
+def clean_chat_history(chat_history: ChatHistory) -> ChatHistory:
+    return [{
+        "role": msg["role"],
+        "content": clean_html_tags(msg["content"])
+    } if is_real_msg(msg) else msg for msg in chat_history]
+
+def make_key_chat_history(chat_history: ChatHistory)->ChatHistory:
+    key_chat_history = chat_history[:]
+    while True:
+        msg = key_chat_history.pop()
+        if is_real_msg(msg) and msg["role"] == "user":
+            break
+    return key_chat_history
+
 @app.post("/log")
 async def log_chat():
     chat_history: ChatHistory = request.get_json()
     if len(chat_history) > 1:
-        key_chat_history = chat_history[:]
-        while True:
-            msg = key_chat_history.pop()
-            if is_real_msg(msg) and msg["role"] == "user":
-                break
-        
+        chat_history = clean_chat_history(chat_history)
+        key_chat_history = make_key_chat_history(chat_history)
         key = gen_key(key_chat_history)
 
         # Check if chat is in cache
