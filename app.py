@@ -5,6 +5,7 @@
 # Now when a new chat history is received, the beginning will be used to find the previous history in the cache and retrieve the key. 
 # The key is then used to update the database with the new messages
 
+import html.entities
 import os
 import re
 import time
@@ -43,6 +44,11 @@ def gen_key(chat_history: ChatHistory):
 
 html_tag_pattern = re.compile(r'<.*?>')
 def clean_html_tags(text: str) -> str:
+    for key, val in reversed(html.entities.html5.items()):
+        # if "quot" in key.lower():
+        #     text = text.replace("&quot;", '"')
+        #     continue
+        text = text.replace("&"+key, val)
     return html_tag_pattern.sub("", text)
 
 def clean_chat_history(chat_history: ChatHistory) -> ChatHistory:

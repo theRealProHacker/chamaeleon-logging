@@ -19,8 +19,8 @@ async def test_1():
 async def test():
     """Gets two chats and compares them"""
 
-    chat1_id = "30859bdc-717b-4b8c-ad33-bd473717c38d"
-    chat2_id = "587ee75e-c20b-4fd7-8aef-aae71402bcc1"
+    chat1_id = "512b9499-37cb-43c2-af3e-059e099ae010"
+    chat2_id = "67bb560e-c118-4ed2-b56d-5b531df53b79"
 
     # load chats from supabase
     from app import supabase
