@@ -1,3 +1,4 @@
 dotenv
 supabase
 flask
+python-dateutil

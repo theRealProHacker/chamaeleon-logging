@@ -482,18 +482,26 @@
         let refreshTimerId;
         let initialSkeleton = true;
 
-        async function fetchDashboard(monthKey = null, { showIndicator = false } = {}) {
+        async function fetchDashboard(monthKey = null, { showIndicator = false, refreshCurrent = false } = {}) {
             if (showIndicator) {
                 showRefreshIndicator();
             }
 
-            const url = monthKey ? `/api/dashboard?month=${encodeURIComponent(monthKey)}` : '/api/dashboard';
+            const params = new URLSearchParams();
+            if (monthKey) {
+                params.set('month', monthKey);
+            }
+            if (refreshCurrent) {
+                params.set('refreshCurrent', '1');
+            }
+            const url = params.toString() ? `/api/dashboard?${params}` : '/api/dashboard';
             try {
                 const response = await fetch(url, { cache: 'no-store' });
                 if (!response.ok) {
                     throw new Error('Unable to load dashboard data');
                 }
                 const payload = await response.json();
+                updateStateFromPayload(payload);
                 monthlySummaryData = Array.isArray(payload.monthly_summary) ? payload.monthly_summary : [];
                 renderMonthlyChart(monthlySummaryData);
                 if (monthKey && payload.selected_month) {
@@ -516,6 +524,17 @@
                 if (showIndicator) {
                     hideRefreshIndicator();
                 }
+            }
+        }
+
+        function updateStateFromPayload(payload) {
+            const currentKey = payload?.current_month || null;
+            if (currentKey) {
+                state.currentMonth = currentKey;
+            }
+            const tracked = Array.isArray(payload?.tracked_months) ? payload.tracked_months : [];
+            if (tracked.length) {
+                state.trackedMonths = tracked;
             }
         }
 
@@ -577,7 +596,7 @@
                                 fetchDashboard(null, { showIndicator: true });
                             } else {
                                 selectedMonthKey = selectedKey;
-                                fetchDashboard(selectedMonthKey, { showIndicator: true });
+                                fetchMonthIfNeeded(selectedMonthKey);
                             }
                         }
                     }
@@ -592,6 +611,20 @@
             if (monthlyChartWrapper.classList.contains('loading-skeleton')) {
                 monthlyChartWrapper.classList.remove('loading-skeleton');
             }
+        }
+
+        function fetchMonthIfNeeded(monthKey) {
+            if (!monthKey) {
+                fetchDashboard(null, { showIndicator: true });
+                return;
+            }
+            const isCurrent = monthKey === state.currentMonth;
+            const cached = state.monthDetailCache.get(monthKey);
+            if (!isCurrent && cached) {
+                renderMonthDetail(cached);
+                return;
+            }
+            fetchDashboard(monthKey, { showIndicator: true, refreshCurrent: isCurrent });
         }
 
         function renderTotals(totals, scopeLabel = 'All Chats') {
@@ -611,6 +644,9 @@
 
             renderDailyChart(monthData.daily_counts || [], monthData.label);
             renderMessages(monthData.chats || [], monthData.label);
+            if (monthData?.month) {
+                state.monthDetailCache.set(monthData.month, monthData);
+            }
         }
 
         function renderDailyChart(dailyCounts, label) {
@@ -901,7 +937,9 @@
         }
 
         refreshButton.addEventListener('click', () => {
-            fetchDashboard(selectedMonthKey, { showIndicator: true });
+            const currentKey = state.currentMonth;
+            state.monthDetailCache.delete(currentKey);
+            fetchDashboard(selectedMonthKey || currentKey, { showIndicator: true, refreshCurrent: true });
         });
 
         window.addEventListener('visibilitychange', () => {
@@ -910,7 +948,13 @@
             }
         });
 
-        fetchDashboard();
+        const state = {
+            currentMonth: null,
+            trackedMonths: [],
+            monthDetailCache: new Map(),
+        };
+
+        fetchDashboard(null, { refreshCurrent: true });
         scheduleAutoRefresh();
     </script>
 </body>
