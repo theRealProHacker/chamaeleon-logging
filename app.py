@@ -9,6 +9,7 @@ import html.entities
 import os
 import re
 import time
+from calendar import day_name
 from datetime import datetime, timedelta, timezone
 from dateutil.parser import isoparse
 from typing import Any, Optional
@@ -170,14 +171,28 @@ def build_monthly_summary(analyses_by_month: dict[str, list[dict[str, Any]]], mo
 def compute_totals(analyses: list[dict[str, Any]]) -> dict[str, Any]:
     total_chats = len(analyses)
     total_user_messages = sum(analysis.get("user_message_count", 0) for analysis in analyses)
-    duration_values = [analysis.get("duration_seconds", 0.0) for analysis in analyses if analysis.get("has_duration")]
     avg_user_messages = total_user_messages / total_chats if total_chats else 0.0
-    avg_duration = sum(duration_values) / len(duration_values) if duration_values else 0.0
     return {
         "total_chats": total_chats,
         "avg_user_messages_per_chat": avg_user_messages,
-        "avg_chat_duration_seconds": avg_duration,
     }
+
+
+def build_weekday_counts(analyses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts: dict[int, int] = {idx: 0 for idx in range(7)}
+    for analysis in analyses:
+        timestamp = analysis.get("chat_timestamp") or analysis.get("start_ts") or analysis.get("end_ts")
+        if isinstance(timestamp, datetime):
+            counts[timestamp.weekday()] += 1
+
+    return [
+        {
+            "weekday": day_name[idx],
+            "short_label": day_name[idx][:3],
+            "count": counts[idx],
+        }
+        for idx in range(7)
+    ]
 
 
 def build_daily_counts(analyses: list[dict[str, Any]], start: datetime, end: datetime) -> list[dict[str, Any]]:
@@ -205,6 +220,24 @@ def build_daily_counts(analyses: list[dict[str, Any]], start: datetime, end: dat
     return list(buckets.values())
 
 
+def build_hourly_counts(analyses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts = {hour: 0 for hour in range(24)}
+    for analysis in analyses:
+        timestamp = analysis.get("chat_timestamp") or analysis.get("start_ts") or analysis.get("end_ts")
+        if isinstance(timestamp, datetime):
+            hour = timestamp.hour
+            counts[hour] += 1
+
+    return [
+        {
+            "hour": hour,
+            "label": f"{hour:02d}:00",
+            "count": counts[hour],
+        }
+        for hour in range(24)
+    ]
+
+
 def iso_or_none(value: Optional[datetime]) -> Optional[str]:
     if isinstance(value, datetime):
         return value.isoformat()
@@ -213,10 +246,24 @@ def iso_or_none(value: Optional[datetime]) -> Optional[str]:
     return None
 
 
+def chat_detail_sort_key(item: dict[str, Any]) -> datetime:
+    for candidate in (
+        item.get("ended_at"),
+        item.get("chat_timestamp"),
+        item.get("started_at"),
+    ):
+        parsed = parse_iso_datetime(candidate)
+        if parsed is not None:
+            return parsed
+    return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def build_month_detail(month_analyses: list[dict[str, Any]], month_key: str) -> dict[str, Any]:
     start, end = get_month_bounds(month_key)
     metrics = compute_totals(month_analyses)
     daily_counts = build_daily_counts(month_analyses, start, end)
+    hourly_counts = build_hourly_counts(month_analyses)
+    weekday_counts = build_weekday_counts(month_analyses)
 
     chat_details = []
     for analysis in month_analyses:
@@ -240,13 +287,15 @@ def build_month_detail(month_analyses: list[dict[str, Any]], month_key: str) -> 
             }
         )
 
-    chat_details.sort(key=lambda item: item.get("chat_timestamp") or "")
+    chat_details.sort(key=chat_detail_sort_key, reverse=True)
 
     return {
         "month": month_key,
         "label": format_month_label(month_key),
         "metrics": metrics,
         "daily_counts": daily_counts,
+        "hourly_counts": hourly_counts,
+        "weekday_counts": weekday_counts,
         "chats": chat_details,
     }
 
@@ -293,6 +342,8 @@ def build_dashboard_payload(month_key: Optional[str], refresh_current: bool) -> 
     monthly_summary = build_monthly_summary(analyses_by_month, chart_keys)
     all_analyses = [analysis for key in tracked_keys for analysis in analyses_by_month.get(key, [])]
     totals = compute_totals(all_analyses)
+    weekday_counts = build_weekday_counts(all_analyses)
+    hourly_counts = build_hourly_counts(all_analyses)
 
     selected_key = month_key or None
     if selected_key == "current":
@@ -310,6 +361,8 @@ def build_dashboard_payload(month_key: Optional[str], refresh_current: bool) -> 
         "selected_month": selected_month_payload,
         "current_month": current_month_key,
         "tracked_months": tracked_keys,
+        "weekday_counts": weekday_counts,
+        "hourly_counts": hourly_counts,
     }
 
 
