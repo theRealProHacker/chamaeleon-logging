@@ -7,6 +7,7 @@ This is a **chat history deduplication and logging service** that receives chat 
 
 ### Core Components
 - **Flask API** (`app.py`): Single endpoint `/log` that processes chat histories
+- **Dashboard** (`static/index.html`): Interactive web UI for visualizing and exploring chat analytics
 - **In-memory cache** (`chat_cache`): 48-hour TTL cache for fast conversation matching
 - **Supabase database**: Persistent storage with `chats` table containing `messages` JSONB field
 - **Key generation system**: Creates conversation fingerprints for deduplication
@@ -83,6 +84,15 @@ When updating existing chats:
 - Implies corrupted data states should fail fast rather than continue
 
 ## Integration Points
+
+### Dashboard Features
+- **Interactive Charts**: Monthly, daily, weekday, and hourly chat distribution visualizations using Chart.js
+- **Message Explorer**: Browse detailed chat conversations with filters by month and weekday
+- **Export Functionality**: Download filtered chat data as JSON with metadata
+  - Export includes human-readable filter info (month/weekday) in filename
+  - Format: `chamaeleon-chats_{filter}_{datetime}.json`
+  - Excludes internal timing fields (`duration_seconds`, `started_at`, `ended_at`)
+  - Includes export metadata with timestamp and filter parameters
 
 ### Supabase Schema
 - Table: `chats`

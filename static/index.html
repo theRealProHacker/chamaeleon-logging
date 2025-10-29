@@ -188,11 +188,32 @@
             display: flex;
             align-items: baseline;
             gap: 0.75rem;
+            flex-wrap: wrap;
         }
 
         .messages-header span {
             color: var(--text-muted);
             font-size: 0.95rem;
+            flex: 1;
+        }
+
+        .export-button {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            background: var(--surface-muted);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .export-button:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .export-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: var(--surface-muted);
         }
 
         .messages-list {
@@ -455,6 +476,16 @@
                     <div class="messages-header">
                         <h2 id="messagesTitle">Messages</h2>
                         <span id="messagesSubtitle">Select a month to see message details.</span>
+                        <button id="exportButton" class="export-button" type="button" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" aria-hidden="true">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Export JSON
+                        </button>
                     </div>
                     <div id="messagesList" class="messages-list">
                         <div class="empty-state">Choose a month to explore its conversations.</div>
@@ -473,6 +504,7 @@
         const hourlyChartCtx = document.getElementById('hourlyChart').getContext('2d');
         const refreshIndicator = document.getElementById('refreshIndicator');
         const refreshButton = document.getElementById('refreshButton');
+        const exportButton = document.getElementById('exportButton');
         const lastUpdatedEl = document.getElementById('lastUpdated');
         const metricsCard = document.getElementById('metricsCard');
         const weekdayChartWrapper = document.getElementById('weekdayChartWrapper');
@@ -999,6 +1031,69 @@
             renderMessages(filtered, currentMessagesLabel, { weekdayName });
             currentFilteredChats = filtered;
             updateHourlyChartFromFilteredChats();
+            updateExportButton();
+        }
+
+        function updateExportButton() {
+            const hasMessages = currentFilteredChats && currentFilteredChats.length > 0;
+            exportButton.disabled = !hasMessages;
+        }
+
+        function exportMessagesToJSON() {
+            if (!currentFilteredChats || currentFilteredChats.length === 0) {
+                return;
+            }
+
+            const now = new Date();
+            const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+
+            let filterPart = '';
+            if (selectedMonthKey) {
+                const cleanMonth = selectedMonthKey.replace(/[^a-zA-Z0-9-]/g, '_');
+                filterPart = cleanMonth;
+
+                if (state.selectedWeekdayIndex !== null) {
+                    const weekdayName = WEEKDAY_FULL_NAMES[state.selectedWeekdayIndex];
+                    filterPart += `_${weekdayName}`;
+                }
+            } else {
+                filterPart = 'all-chats';
+            }
+
+            const filename = `chamaeleon-chats_${filterPart}_${dateStr}.json`;
+
+            // Remove duration_seconds, started_at, and ended_at from chats
+            const cleanedChats = currentFilteredChats.map(chat => {
+                const { duration_seconds, started_at, ended_at, ...cleanChat } = chat;
+                return cleanChat;
+            });
+
+            const exportData = {
+                export_info: {
+                    exported_at: now.toISOString(),
+                    exported_at_human: now.toLocaleString(),
+                    filter: {
+                        month: selectedMonthKey || 'all',
+                        weekday: state.selectedWeekdayIndex !== null
+                            ? WEEKDAY_FULL_NAMES[state.selectedWeekdayIndex]
+                            : 'all'
+                    },
+                    total_chats: currentFilteredChats.length
+                },
+                chats: cleanedChats
+            };
+
+            const jsonStr = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         }
 
         function renderMessages(chats, label, { weekdayName = null } = {}) {
@@ -1097,6 +1192,7 @@
             currentMessagesLabel = 'Selected Month';
             state.selectedWeekdayIndex = null;
             renderWeekdayChart(globalWeekdayCounts);
+            updateExportButton();
         }
 
         function showRefreshIndicator() {
@@ -1251,6 +1347,10 @@
             const currentKey = state.currentMonth;
             state.monthDetailCache.delete(currentKey);
             fetchDashboard(selectedMonthKey || currentKey, { showIndicator: true, refreshCurrent: true });
+        });
+
+        exportButton.addEventListener('click', () => {
+            exportMessagesToJSON();
         });
 
         window.addEventListener('visibilitychange', () => {
