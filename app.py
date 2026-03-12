@@ -434,7 +434,7 @@ async def log_chat():
 
             new_history = old_history + chat_history[chat_history.index(last_real_msg)+1:]
 
-            chat_cache[gen_key(new_history)] = (key, new_history, time.time())
+            chat_cache[gen_key(new_history)] = (db_index, new_history, time.time())
             supabase.table("chats").update({"messages": new_history}).eq("id", db_index).execute()
             return {"status": "chat updated", "chat_id": key}
     
